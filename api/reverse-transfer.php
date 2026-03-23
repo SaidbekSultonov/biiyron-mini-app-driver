@@ -40,7 +40,7 @@ if (!$log) {
 
 // Joriy qiymatlarni olish
 $stmt2 = $conn->prepare(
-    "SELECT oi.id, oi.quantity, o.employee_id
+    "SELECT oi.id, oi.quantity, o.id AS order_id, o.employee_id
      FROM order_items oi
      INNER JOIN orders o ON o.id = oi.order_id
      WHERE oi.id = ? AND o.employee_id = ? AND oi.deleted_at IS NULL LIMIT 1"
@@ -53,7 +53,10 @@ if (!$to_item || (float) $to_item['quantity'] <= 0) {
 }
 
 $stmt3 = $conn->prepare(
-    "SELECT id, quantity FROM order_items WHERE id = ? AND deleted_at IS NULL LIMIT 1"
+    "SELECT oi.id, oi.quantity, o.id AS order_id
+     FROM order_items oi
+     INNER JOIN orders o ON o.id = oi.order_id
+     WHERE oi.id = ? AND oi.deleted_at IS NULL LIMIT 1"
 );
 $stmt3->execute([$source_item_id]);
 $src_item = $stmt3->fetch(PDO::FETCH_ASSOC);
@@ -75,6 +78,19 @@ try {
 
     $conn->prepare("UPDATE driver_item_logs SET reverted = 1, updated_at = NOW() WHERE id = ?")
          ->execute([$log['id']]);
+
+    // Ikkala buyurtma total_amount ni qayta hisoblash
+    foreach (array_unique([$to_item['order_id'], $src_item['order_id']]) as $oid) {
+        $conn->prepare(
+            "UPDATE orders
+             SET total_amount = (
+                 SELECT SUM(oi2.quantity * oi2.price)
+                 FROM order_items oi2
+                 WHERE oi2.order_id = ? AND oi2.deleted_at IS NULL
+             ), updated_at = NOW()
+             WHERE id = ?"
+        )->execute([$oid, $oid]);
+    }
 
     $conn->commit();
 } catch (Exception $e) {

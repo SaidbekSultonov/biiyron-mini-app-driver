@@ -63,6 +63,17 @@ try {
         $driver['employees_id'],
     ]);
 
+    // Buyurtma total_amount ni qayta hisoblash
+    $conn->prepare(
+        "UPDATE orders
+         SET total_amount = (
+             SELECT SUM(oi2.quantity * oi2.price)
+             FROM order_items oi2
+             WHERE oi2.order_id = ? AND oi2.deleted_at IS NULL
+         ), updated_at = NOW()
+         WHERE id = ?"
+    )->execute([$item['order_id'], $item['order_id']]);
+
     $conn->commit();
 } catch (Exception $e) {
     $conn->rollBack();

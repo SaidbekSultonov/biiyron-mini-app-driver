@@ -20,7 +20,7 @@ if (!$id) {
 }
 
 $stmt = $conn->prepare(
-    "SELECT id, client_id, total_amount FROM orders
+    "SELECT id, client_id, total_amount, delivery_price FROM orders
      WHERE id = ? AND employee_id = ? AND status = 3 AND deleted_at IS NULL LIMIT 1"
 );
 $stmt->execute([$id, $driver['employees_id']]);
@@ -65,6 +65,9 @@ try {
     $conn->prepare("UPDATE orders SET status = 4, delivered_at = NOW(), updated_at = NOW() WHERE id = ?")
          ->execute([$id]);
 
+    // Mijozdan yechilishi kerak bo'lgan yakuniy summa: mahsulotlar + yetkazib berish
+    $finalAmount = (float) $order['total_amount'] + (float) ($order['delivery_price'] ?? 0);
+
     // Client transaction yozish (qarz — type=2)
     $conn->prepare(
         "INSERT INTO client_transactions (client_id, order_id, amount, type, comment, created_at, updated_at)
@@ -72,9 +75,14 @@ try {
     )->execute([
         $order['client_id'],
         $id,
-        $order['total_amount'],
+        $finalAmount,
         "Buyurtma #{$id} yetkazildi",
     ]);
+
+    // Mijoz balansini kamaytirish
+    $conn->prepare(
+        "UPDATE client_balance SET balance = balance - ?, updated_at = NOW() WHERE client_id = ?"
+    )->execute([$finalAmount, $order['client_id']]);
 
     $conn->commit();
 } catch (Exception $e) {

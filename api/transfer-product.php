@@ -97,6 +97,19 @@ try {
         $driver['employees_id'],
     ]);
 
+    // Ikkala buyurtma total_amount ni qayta hisoblash
+    foreach (array_unique([$to_item['order_id'], $from_item['order_id']]) as $oid) {
+        $conn->prepare(
+            "UPDATE orders
+             SET total_amount = (
+                 SELECT SUM(oi2.quantity * oi2.price)
+                 FROM order_items oi2
+                 WHERE oi2.order_id = ? AND oi2.deleted_at IS NULL
+             ), updated_at = NOW()
+             WHERE id = ?"
+        )->execute([$oid, $oid]);
+    }
+
     $conn->commit();
 } catch (Exception $e) {
     $conn->rollBack();
